@@ -1,13 +1,28 @@
-#include <ClosedCube_TCA9548A.h>
 
-#include <Wire.h>
 
 /*
   Project : SPOOL- Smart Pool Table
   Description: Smart Room Device
   Author: Arjun Bhakta
-  Date: 17-FEB-2022
+  Date: 7-MAR-2022
 */
+#include "IotTimer.h"
+IoTTimer servoTimer;
+const int TIME_SERVO = 1000;
+bool isOpen1;
+
+// counter
+bool lastBallState;
+bool currentBallState;
+int ballCount;
+
+
+// Multiplexer i2c
+#include <TCA9548A.h>
+#include <Wire.h>
+TCA9548A I2CMux;
+//I2CMux.begin(Wire);             // Wire instance is passed to the library
+//I2CMux.closeAll();              // Set a base state which we know (also the default state on power on)
 
 // servo Initialize
 #include <PWMServo.h>
@@ -42,8 +57,12 @@ bool p3;
 //
 
 bool y;
-bool hasRun = true;
+bool hasRun = false;
 int bri;
+
+
+// counter
+
 
 void setup() {
   Serial.begin(9600);
@@ -56,20 +75,20 @@ void setup() {
     x = pow(x, 2.5);
     x *= 255;
 
+    ballCount = 0;
 
+    isOpen1 == false;
+    pinMode(14, INPUT);
+    pinMode(15, INPUT); // PhotoResistor
+    myServo0.attach(22);
+    myServo1.attach(23);// Servo Motor
+    pinMode(12, OUTPUT); // NEOpixels
+    pixel.begin();
+    pixel.show();
 
+    bri = 40;
 
-  pinMode(14, INPUT);
-  pinMode(15, INPUT); // PhotoResistor
-  myServo0.attach(22);
-  myServo1.attach(23);// Servo Motor
-  pinMode(12, OUTPUT); // NEOpixels
-  pixel.begin();
-  pixel.show();
-
-  bri = 40;
-
-}
+  }
 }
 
 //void shootAroundMode();
@@ -79,41 +98,52 @@ void setup() {
 
 void loop() {
 
+  Serial.printf ("%i \n" , ballCount);
+
   // define photoresistor state at each pocket
-  p0 = photoRead(15);
+  //p0 = photoRead(15);
   p1 = photoRead(14);
   // p2 = photoRead();
   // p3= photoRead();
 
-
-
-  // set pixel color based on reading at each pocket
-  if (p0 == 1) {
-    pixel.fill(0x000000, 0, 4 );
-    pixel.setBrightness(bri);
-    pixel.show();
-    myServo0.write(p0 * 180);
-  }
-  else {
-    myServo0.write(p0 * 180);
-    pixel.fill(blue, 0, 4 );
-    pixel.setBrightness(bri);
-    pixel.show();
-  }
-
-
   if (p1 == 1) {
-
+    lastBallState = 1;
     pixel.fill(0, 4, 4 );
     pixel.setBrightness(bri);
     pixel.show();
     myServo1.write(p1 * 180);
+    hasRun = false;
+
   }
   else {
-    myServo1.write(p1 * 180);
+    // read Color
+
     pixel.fill(0xe1ad01, 4, 4);
     pixel.setBrightness(bri);
     pixel.show();
+    // delay color
+
+    if (hasRun == false) {
+      // read color
+      // change neo pixels
+
+      servoTimer.startTimer(TIME_SERVO);
+      myServo1.write(180);
+      hasRun = true;
+
+    }
+    if (servoTimer.isTimerReady() && hasRun == true) {
+      myServo1.write(0);
+      currentBallState = 0;
+      if (lastBallState != currentBallState) {
+        ballCount++;
+        lastBallState = currentBallState;
+      }
+
+    }
+
+
+
   }
 }
 
@@ -121,34 +151,41 @@ bool photoRead(int _prPin) {
   int pRead;
   bool pVal;
   bool photoState;
-  bool prePhotoState;
+  bool prePhotoState = false;
   pRead = analogRead(_prPin);
-  if (pRead < 200) {
+
+  if (pRead < 300) {
     pVal = 0;
+
   }
   else {
     pVal = 1;
-  }
-  if (pVal != prePhotoState) {
-    if (pVal == false) {
-      photoState = !photoState;
-    }
-    photoState = prePhotoState;
-  }
 
-  Serial.printf("%i\n", photoState);
-  return photoState;
+  }
+  //Serial.printf("%i, %i\n", pRead, pVal);
+  return pVal;
+  //  if (pVal != prePhotoState) {
+  //    if (pVal == false) {
+  //      photoState = !photoState;
+  //    }
+  //    photoState = prePhotoState;
+  //  }
+
+
+  //return photoState;
+
+
 }
 
 // output will result in color
-void tcsRead(bool _readColor) {
-  
+void tcs0Read() {
+
   // declare color variables
-  unsigned int Clear;
-  unsigned int red;
-  unsigned int green;
-  unsigned int blue;
-  
+  uint16_t Clear;
+  uint16_t red;
+  uint16_t green;
+  uint16_t blue;
+
   float r, g, b;
 
 
@@ -162,12 +199,19 @@ void tcsRead(bool _readColor) {
   // turn off LED
   tcs0.setInterrupt(true);
   unsigned int sum = Clear;
-  r = red; r /= sum;
-  g = green; g /= sum;
-  b = blue; b /= sum;
-  r *= 256; g *= 256; b *= 256;
+  r = red;
+  r /= sum;
+  g = green;
+  g /= sum;
+  b = blue;
+  b /= sum;
+  r *= 256;
+  g *= 256;
+  b *= 256;
 
-  
+
+
+
 
 }
 // output will release ball
