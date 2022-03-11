@@ -61,6 +61,17 @@ bool p1;
 //
 int bri;
 
+//OLED
+#include <Adafruit_SSD1306.h>
+#include <splash.h>
+const int SCREEN_WIDTH = 128;
+const int SCREEN_HEIGHT = 64;
+const int OLED_RESET = -1; // makes this the same as Teensy Reset Button
+const int SCREEN_ADDRESS = 0x3C ; // recieved this from I2C scanner
+int rot = 0;
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET); //&WIre = Wire.begin()
+
+int h;
 
 void setup() {
   Serial.begin(9600);
@@ -75,11 +86,19 @@ void setup() {
   pixel.begin();
   pixel.show();
 
-  int gateColor;
+  
   Ethernet.begin(mac);
-
+  //printIP();
   //wemoButton
   myServo1.write(180);
+
+  // oled
+
+  display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS);
+  display.clearDisplay();
+  display.setRotation(90);
+  int gateColor;
+
 }
 
 void loop() {
@@ -93,7 +112,7 @@ void loop() {
 
   if (p1 == 1) {
     lastBallState = 1;
-    neoPixelsDisplay(gateColor, 0,30);
+    neoPixelsDisplay(gateColor,0,30);
     //hasRun1 = false;
   }
   else {
@@ -101,18 +120,17 @@ void loop() {
     gateColor = tcsColor();
     neoPixelsDisplay(gateColor, 0, 30);
 
-
     if ((hasRun == false)) {
       servoTimer.startTimer(TIME_SERVO);
       myServo1.write(0);
       hasRun = true;
       gateColor = tcsColor();
-      Serial.printf ("timer started");
+      //Serial.printf ("timer started");
     }
   }
   //Serial.printf ("%i,%i\n",servoTimer.isTimerReady(),hasRun);
   if (servoTimer.isTimerReady() && hasRun) {
-    Serial.printf ("closeServo\n");
+   // Serial.printf ("closeServo\n");
     myServo1.write(180);
     hasRun = false;
     currentBallState = 0;
@@ -123,11 +141,23 @@ void loop() {
 
     }
   }
-  //HueLights(ballCount);
-  Serial.printf( "%i\n", ballCount);
-  distractMode(22);
+  oledDisplay();
+  HueLights(ballCount);
 
+  //Serial.printf("%i\n", ballCount);
+  if (ballCount == 8) {
+    for (h=1;h<5; h++){
+    setHue(h, false, 0, 0, 0);
+    Serial.printf ("hueoff");
+    }
+    ballCount = 1;
+  }
+
+  distractMode(22);
+ 
 }
+
+
 //
 bool photoRead(int _prPin) {
   int pRead;
@@ -142,32 +172,32 @@ bool photoRead(int _prPin) {
   else {
     pVal = 1;
   }
-  Serial.printf("%i, %i\n", pRead, pVal);
+  //Serial.printf("%i, %i\n", pRead, pVal);
   return pVal;
 }
 
 void distractMode(int buttonPin) {
-  static bool lastButtonState = digitalRead(buttonPin);
-  bool curButtonState = false;
+  static bool lastButtonState;
+  bool curButtonState = digitalRead(buttonPin);
   int i;
   int j;
-  curButtonState = digitalRead(buttonPin);
-  if (curButtonState == 0) {
+  if ( lastButtonState && curButtonState == 0) {
     for ( i = 0; i < 5; i++) {
       switchON(i);
     }
+    lastButtonState= !lastButtonState;
   }
-  if (curButtonState == 1) {
-    for ( j = 0; j < 5; j++) {
+   if (lastButtonState ==false && curButtonState == 1) {
+    for (j = 0; j < 5; j++) {
       switchOFF(j);
     }
-  }
-  
-  lastButtonState = curButtonState;
+    lastButtonState=true; 
+}
 }
 
 void HueLights(int _ballCount) {
   int rState;
+  int hueIndex;
   int bright;
   IoTTimer HueTimer;
   const int HUE_TIME = 2000;
@@ -175,23 +205,41 @@ void HueLights(int _ballCount) {
   bool cycleRun;
   cycleRun = false;
   hueRun == false;
-  if (_ballCount >= 6 && hueRun == false ) {
-    HueTimer.startTimer(HUE_TIME);
-    setHue(1, true, HueRainbow[rState], 200, 255);
-    hueRun = true;
+  int h;
+if (gateColor == red){
+  hueIndex = 0;
+}
+if (gateColor == yellow){
+  hueIndex = 2;
+}
+if (gateColor == green){
+  hueIndex = 3;
+}
+if (gateColor ==blue){
+  hueIndex = 4;
+}
+if (gateColor ==purple){
+  hueIndex = 6;
+}
+    if (ballCount == 6) {
+    for (h=1;h<5; h++){
+    setHue(h, true, HueRainbow[hueIndex], 200, 255);
+    Serial.printf ("hue");
+    hueRun = true; 
+    }
+    
   }
-  if (HueTimer.isTimerReady() && hueRun == true) {
-    rState++;
-    hueRun = false;
-  }
-  if (HueTimer.isTimerReady() && hueRun == false && rState > 6) {
-    setHue(1, false, 0, 0, 0);
-    hueRun = false;
-    _ballCount = 0;
-  }
-  if (_ballCount < 6) {
-    setHue(1, false, 0, 0, 0);
-  }
+
+  
+//  if (HueTimer.isTimerReady() && hueRun == true) {
+//    rState++;    
+//  }
+  //  if (HueTimer.isTimerReady() && hueRun == false && _ballCount ==7) {
+  //    setHue(1, false, 0, 0, 0);
+  //    hueRun = false;
+  //    _ballCount = 0;
+  //  }
+
 }
 
 void neoPixelsDisplay(int _colorValue, int _pixelStart, int _pixelNum) {
@@ -208,9 +256,13 @@ void neoPixelClear(int _pixelStart, int _pixelNum) {
 }
 
 void oledDisplay() {
-  // display the amount of balls made
-  // display the colors made.
-  // store the characters of colors
+  display.clearDisplay();
+  display.setTextSize(2);
+  display.setTextColor(SSD1306_WHITE);
+  display.setCursor(0, 0);
+  display.cp437(true);
+  display.printf("%i %i", ballCount, gateColor);
+  display.display();
 }
 int tcsColor() {
   float hue;
@@ -283,4 +335,11 @@ int tcsColor() {
     color = purple;
   }
   return color;
+}
+void printIP() {
+  Serial.printf("My IP address: ");
+  for (byte thisByte = 0; thisByte < 3; thisByte++) {
+    Serial.printf("%i.", Ethernet.localIP()[thisByte]);
+  }
+  Serial.printf("%i\n", Ethernet.localIP()[3]);
 }
